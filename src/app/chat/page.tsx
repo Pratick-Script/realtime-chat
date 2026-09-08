@@ -11,9 +11,9 @@ import { format } from 'date-fns';
 export default function Chat() {
   const { user, profile, isLoading, logout } = useAuth();
   const router = useRouter();
-  const [users, setUsers] = useState<Models.Document[]>([]);
-  const [selectedUser, setSelectedUser] = useState<Models.Document | null>(null);
-  const [messages, setMessages] = useState<Models.Document[]>([]);
+  const [users, setUsers] = useState<any[]>([]);
+  const [selectedUser, setSelectedUser] = useState<any | null>(null);
+  const [messages, setMessages] = useState<any[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -61,12 +61,12 @@ export default function Chat() {
           [
             Query.or([
               Query.and([
-                Query.equal('senderId', profile.userId),
+                Query.equal('senderId', (profile as any)?.userId),
                 Query.equal('receiverId', selectedUser.userId)
               ]),
               Query.and([
                 Query.equal('senderId', selectedUser.userId),
-                Query.equal('receiverId', profile.userId)
+                Query.equal('receiverId', (profile as any)?.userId)
               ])
             ]),
             Query.orderAsc('$createdAt'),
@@ -88,11 +88,11 @@ export default function Chat() {
       `databases.${appwriteConfig.databaseId}.collections.${appwriteConfig.messagesCollectionId}.documents`,
       (response) => {
         if (response.events.includes('databases.*.collections.*.documents.*.create')) {
-          const payload = response.payload as Models.Document;
+          const payload = response.payload as any;
           // Check if message belongs to this conversation
           const isRelevant =
-            (payload.senderId === profile.userId && payload.receiverId === selectedUser.userId) ||
-            (payload.senderId === selectedUser.userId && payload.receiverId === profile.userId);
+            (payload.senderId === (profile as any)?.userId && payload.receiverId === selectedUser.userId) ||
+            (payload.senderId === selectedUser.userId && payload.receiverId === (profile as any)?.userId);
 
           if (isRelevant) {
             setMessages((prev) => [...prev, payload]);
@@ -125,7 +125,7 @@ export default function Chat() {
         ID.unique(),
         {
           messageId: Date.now(),
-          senderId: profile.userId,
+          senderId: (profile as any)?.userId,
           receiverId: selectedUser.userId,
           content: newMessage.trim(),
           timestamp: new Date().toISOString(),
@@ -160,7 +160,7 @@ export default function Chat() {
             </div>
             <div>
               <p className="font-semibold text-white truncate max-w-[150px]">
-                {profile?.username || user.name || 'User'}
+                {(profile as any)?.username || user.name || 'User'}
               </p>
               <p className="text-xs text-gray-400">Online</p>
             </div>
@@ -235,7 +235,7 @@ export default function Chat() {
                 </div>
               ) : (
                 messages.map((msg) => {
-                  const isMe = msg.senderId === profile.userId;
+                  const isMe = msg.senderId === (profile as any)?.userId;
                   return (
                     <div key={msg.$id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
                       <div className="flex items-center gap-2 mb-1">
