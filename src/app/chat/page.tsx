@@ -14,7 +14,6 @@ export default function Chat() {
   const [users, setUsers] = useState<any[]>([]);
   const [selectedUser, setSelectedUser] = useState<any | null>(null);
   const [messages, setMessages] = useState<any[]>([]);
-  const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   const [newMessage, setNewMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -98,12 +97,6 @@ export default function Chat() {
           if (isRelevant) {
             setMessages((prev) => [...prev, payload]);
             scrollToBottom();
-          } else if (payload.receiverId === (profile as any)?.userId) {
-            // Message is for current user, but from a different conversation
-            setUnreadCounts((prev) => ({
-              ...prev,
-              [payload.senderId]: (prev[payload.senderId] || 0) + 1
-            }));
           }
         }
       }
@@ -112,18 +105,7 @@ export default function Chat() {
     return () => {
       unsubscribe();
     };
-  }, [user, selectedUser, profile]);
-
-  // Clear unread count when opening a conversation
-  useEffect(() => {
-    if (selectedUser) {
-      setUnreadCounts((prev) => {
-        const newCounts = { ...prev };
-        delete newCounts[selectedUser.userId];
-        return newCounts;
-      });
-    }
-  }, [selectedUser]);
+  }, [user, selectedUser]);
 
   const scrollToBottom = () => {
     setTimeout(() => {
@@ -214,11 +196,6 @@ export default function Chat() {
                   <div className="flex-1 text-left truncate">
                     <p className="font-medium truncate">{u.username}</p>
                   </div>
-                  {unreadCounts[u.userId] > 0 && (
-                    <div className="w-5 h-5 bg-green-500 rounded-full flex items-center justify-center text-[10px] font-bold text-white ml-2 flex-shrink-0">
-                      {unreadCounts[u.userId]}
-                    </div>
-                  )}
                 </button>
               ))
             )}
@@ -233,8 +210,8 @@ export default function Chat() {
             {/* Chat Header */}
             <div className="h-16 px-4 md:px-6 border-b border-gray-800 flex items-center bg-gray-900/50 backdrop-blur-sm sticky top-0 z-10">
               <div className="flex items-center gap-2 md:gap-3">
-                <button 
-                  onClick={() => setSelectedUser(null)} 
+                <button
+                  onClick={() => setSelectedUser(null)}
                   className="md:hidden p-2 -ml-2 text-gray-400 hover:text-white rounded-full hover:bg-gray-800 transition-colors"
                 >
                   <ChevronLeft size={24} />
