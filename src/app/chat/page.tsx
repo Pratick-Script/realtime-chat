@@ -16,7 +16,45 @@ export default function Chat() {
   const [messages, setMessages] = useState<any[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
+  const [unreadCounts, setUnreadCounts] = useState<Record<number, number>>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const selectedUserRef = useRef<any | null>(null);
+
+  // Keep ref in sync
+  useEffect(() => {
+    selectedUserRef.current = selectedUser;
+  }, [selectedUser]);
+
+  // Fetch initial unread messages count
+  useEffect(() => {
+    if (!user || !profile) return;
+
+    const fetchUnreadCounts = async () => {
+      try {
+        const response = await databases.listDocuments(
+          appwriteConfig.databaseId,
+          appwriteConfig.messagesCollectionId,
+          [
+            Query.equal('receiverId', (profile as any)?.userId),
+            Query.equal('isRead', false),
+            Query.limit(500)
+          ]
+        );
+
+        const counts: Record<number, number> = {};
+        response.documents.forEach((msg) => {
+          const sId = msg.senderId;
+          counts[sId] = (counts[sId] || 0) + 1;
+        });
+
+        setUnreadCounts(counts);
+      } catch (error) {
+        console.error("Failed to fetch unread messages", error);
+      }
+    };
+
+    fetchUnreadCounts();
+  }, [user, profile]);
 
   // Authentication check
   useEffect(() => {
@@ -51,7 +89,7 @@ export default function Chat() {
 
   // Fetch messages for selected conversation
   useEffect(() => {
-    if (!user || !selectedUser) return;
+    if (!user || !profile || !selectedUser) return;
 
     const fetchMessages = async () => {
       try {
@@ -75,28 +113,69 @@ export default function Chat() {
         );
         setMessages(response.documents);
         scrollToBottom();
+
+        // Mark unread messages as read
+        const unreadMessages = response.documents.filter(
+          (msg) => msg.receiverId === (profile as any)?.userId && msg.isRead === false
+        );
+
+        if (unreadMessages.length > 0) {
+          await Promise.all(
+            unreadMessages.map((msg) =>
+              databases.updateDocument(
+                appwriteConfig.databaseId,
+                appwriteConfig.messagesCollectionId,
+                msg.$id,
+                { isRead: true }
+              ).catch((err) => console.error("Failed to mark message as read:", err))
+            )
+          );
+        }
       } catch (error: any) {
         console.error("Failed to fetch messages", error);
-        alert("Error loading messages: " + error.message);
       }
     };
 
     fetchMessages();
+  }, [user, profile, selectedUser]);
 
-    // Real-time subscription
+  // Real-time subscription
+  useEffect(() => {
+    if (!user || !profile) return;
+
     const unsubscribe = client.subscribe(
       `databases.${appwriteConfig.databaseId}.collections.${appwriteConfig.messagesCollectionId}.documents`,
       (response) => {
-        if (response.events.includes('databases.*.collections.*.documents.*.create')) {
+        if (response.events.some(e => e.includes('.create'))) {
           const payload = response.payload as any;
-          // Check if message belongs to this conversation
-          const isRelevant =
-            (payload.senderId === (profile as any)?.userId && payload.receiverId === selectedUser.userId) ||
-            (payload.senderId === selectedUser.userId && payload.receiverId === (profile as any)?.userId);
+          const currentSelectedUser = selectedUserRef.current;
+          const myUserId = (profile as any)?.userId;
 
-          if (isRelevant) {
-            setMessages((prev) => [...prev, payload]);
-            scrollToBottom();
+          if (payload.receiverId === myUserId || payload.senderId === myUserId) {
+            const isRelevant = currentSelectedUser && (
+              (payload.senderId === myUserId && payload.receiverId === currentSelectedUser.userId) ||
+              (payload.senderId === currentSelectedUser.userId && payload.receiverId === myUserId)
+            );
+
+            if (isRelevant) {
+              setMessages((prev) => [...prev, payload]);
+              scrollToBottom();
+
+              // If receiving a message in active chat, mark it as read immediately
+              if (payload.receiverId === myUserId && payload.isRead === false) {
+                databases.updateDocument(
+                  appwriteConfig.databaseId,
+                  appwriteConfig.messagesCollectionId,
+                  payload.$id,
+                  { isRead: true }
+                ).catch(err => console.error("Failed to mark realtime message as read:", err));
+              }
+            } else if (payload.receiverId === myUserId) {
+              setUnreadCounts((prev) => ({
+                ...prev,
+                [payload.senderId]: (prev[payload.senderId] || 0) + 1
+              }));
+            }
           }
         }
       }
@@ -105,7 +184,7 @@ export default function Chat() {
     return () => {
       unsubscribe();
     };
-  }, [user, selectedUser]);
+  }, [user, profile]);
 
   const scrollToBottom = () => {
     setTimeout(() => {
@@ -115,7 +194,7 @@ export default function Chat() {
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newMessage.trim() || !user || !selectedUser) return;
+    if (!newMessage.trim() || !user || !profile || !selectedUser) return;
 
     setIsSending(true);
     try {
@@ -129,7 +208,8 @@ export default function Chat() {
           receiverId: selectedUser.userId,
           content: newMessage.trim(),
           timestamp: new Date().toISOString(),
-          messageType: 'text'
+          messageType: 'text',
+          isRead: false
         }
       );
       setNewMessage('');
@@ -141,7 +221,7 @@ export default function Chat() {
     }
   };
 
-  if (isLoading || !user) {
+  if (isLoading || !user || !profile) {
     return (
       <div suppressHydrationWarning className="flex items-center justify-center min-h-screen bg-gray-950">
         <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
@@ -183,7 +263,10 @@ export default function Chat() {
               users.map((u) => (
                 <button
                   key={u.$id}
-                  onClick={() => setSelectedUser(u)}
+                  onClick={() => {
+                    setSelectedUser(u);
+                    setUnreadCounts(prev => ({ ...prev, [u.userId]: 0 }));
+                  }}
                   className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-all ${selectedUser?.$id === u.$id
                     ? 'bg-blue-600/10 text-blue-400'
                     : 'hover:bg-gray-800 text-gray-300'
@@ -193,8 +276,13 @@ export default function Chat() {
                     }`}>
                     {u.username?.charAt(0).toUpperCase() || '?'}
                   </div>
-                  <div className="flex-1 text-left truncate">
+                  <div className="flex-1 text-left truncate flex items-center justify-between">
                     <p className="font-medium truncate">{u.username}</p>
+                    {unreadCounts[u.userId] > 0 && (
+                      <span className="bg-red-500 text-white text-[10px] font-bold w-5 h-5 flex items-center justify-center rounded-full shadow-sm">
+                        {unreadCounts[u.userId] > 99 ? '99+' : unreadCounts[u.userId]}
+                      </span>
+                    )}
                   </div>
                 </button>
               ))
