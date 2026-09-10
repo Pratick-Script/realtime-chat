@@ -1,6 +1,6 @@
 # Real-Time Chat App
 
-A modern, responsive, real-time chat application built with **Next.js 15**, **Tailwind CSS**, and **Appwrite**.
+A modern, responsive, real-time chat application built with **Next.js 15**, **Typescript**, **Tailwind CSS**, and **Appwrite**.
 
 ## 🚀 Features
 - **Authentication**: Secure Email & Password login/signup using Appwrite Auth.
@@ -8,6 +8,7 @@ A modern, responsive, real-time chat application built with **Next.js 15**, **Ta
 - **Responsive Design**: WhatsApp-style mobile responsive layout, and side-by-side desktop view.
 - **Auto-scroll**: Automatically scrolls to the newest messages in the chat.
 - **Dynamic Database sync**: Automatic mapping of user profiles to messages.
+- **Unread message count**: Unread message count for conversations not currently open, cleared when opened.
 
 ---
 
